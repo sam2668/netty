@@ -16,6 +16,7 @@
 
 package io.netty.util.internal;
 
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.security.cert.X509Certificate;
 
@@ -34,6 +35,7 @@ public final class EmptyArrays {
     public static final String[] EMPTY_STRINGS = new String[0];
     public static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
     public static final ByteBuffer[] EMPTY_BYTE_BUFFERS = new ByteBuffer[0];
+    public static final InetSocketAddress[] EMPTY_INET_SOCKET_ADDRESSES = new InetSocketAddress[0];
     public static final X509Certificate[] EMPTY_X509_CERTIFICATES = new X509Certificate[0];
 
     private EmptyArrays() { }
