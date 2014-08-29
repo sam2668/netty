@@ -20,17 +20,18 @@ import io.netty.handler.codec.dns.DnsType;
 
 import java.net.InetAddress;
 
-public class DefaultDnsResourceDecoder implements DnsResourceDecoder<Object> {
+public final class DefaultDnsResourceDecoder implements DnsResourceDecoder<Object> {
     private static final DnsResourceDecoder<InetAddress> A_RESOURCE_DECODER = new AddressDecoder(4);
     private static final DnsResourceDecoder<InetAddress> AAAA_RESOURCE_DECODER = new AddressDecoder(16);
 
     public static final DnsResourceDecoder<Object> INSTANCE = new DefaultDnsResourceDecoder();
 
-    private DefaultDnsResourceDecoder() {}
+    private DefaultDnsResourceDecoder() { }
 
     @Override
     public Object decode(DnsResource resource) {
         // Only supports A and AAAA records for now
+        // TODO: Add support for others too once the API is ok.
         DnsType type = resource.type();
         if (type == DnsType.A) {
             return A_RESOURCE_DECODER.decode(resource);

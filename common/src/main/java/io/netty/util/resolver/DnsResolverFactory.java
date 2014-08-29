@@ -13,22 +13,13 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package io.netty.resolver.dns;
+package io.netty.util.resolver;
 
-import java.net.InetSocketAddress;
-import java.util.concurrent.atomic.AtomicInteger;
+import io.netty.util.concurrent.EventExecutor;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.Promise;
 
-public class RoundRobinNameServers implements NameServers {
-
-    private final InetSocketAddress[] servers;
-    private final AtomicInteger idx = new AtomicInteger(0);
-
-    public RoundRobinNameServers(InetSocketAddress[] servers) {
-        this.servers = servers.clone();
-    }
-
-    @Override
-    public InetSocketAddress next() {
-        return servers[Math.abs(idx.incrementAndGet() % servers.length)];
-    }
+public interface DnsResolverFactory<E extends EventExecutor> {
+    Future<DnsResolver> resolver(E executor);
+    Future<DnsResolver> resolver(E executor, Promise<DnsResolver> promise);
 }

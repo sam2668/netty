@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class DatagramDnsResolver implements DnsResolver {
     private static final DnsResponseDecoder RESPONSE_DECODER = new DnsResponseDecoder();
     private static final DnsQueryEncoder QUERY_ENCODER = new DnsQueryEncoder();
-    private static final DnsResolverException TIMEOUT = new DnsResolverException("DNS Query Timeout");
+    private static final DnsResolverException TIMEOUT = new DnsResolverException("DNS query timeout");
 
     static {
         TIMEOUT.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
@@ -62,31 +62,24 @@ public final class DatagramDnsResolver implements DnsResolver {
     private final NameServers servers;
     private final AtomicInteger id = new AtomicInteger(0);
     private final DatagramChannel channel;
-    private final DnsResourceDecoder<?> decoder;
+    private final DnsResourceDecoder<?> decoder = DefaultDnsResourceDecoder.INSTANCE;
     private final long timeout;
 
-    public DatagramDnsResolver(DatagramChannel channel, NameServers servers) {
-        this(channel, 0, servers);
-    }
-
-    public DatagramDnsResolver(DatagramChannel channel, long timeout, NameServers servers) {
-        this(channel, timeout, DefaultDnsResourceDecoder.INSTANCE, servers);
-    }
-
-    public DatagramDnsResolver(DatagramChannel channel, long timeout, DnsResourceDecoder<?> decoder,
-                               NameServers servers) {
+    DatagramDnsResolver(DatagramChannel channel, long timeout, NameServers servers) {
         if (timeout < 0) {
             throw new IllegalArgumentException();
         }
+        if (!channel.isRegistered()) {
+            throw new IllegalStateException("Channel must be registered before");
+        }
         this.servers = servers;
+        this.channel = channel;
         ChannelConfig config = channel.config();
         config.setOption(ChannelOption.DATAGRAM_CHANNEL_ACTIVE_ON_REGISTRATION, true);
         config.setOption(ChannelOption.SO_BROADCAST, true);
         channel.pipeline().addLast("decoder", RESPONSE_DECODER).addLast("encoder", QUERY_ENCODER)
                 .addLast("handler", new DnsResponseHandler());
-        this.channel = channel;
         this.timeout = timeout;
-        this.decoder = decoder;
     }
 
     @Override
@@ -109,8 +102,8 @@ public final class DatagramDnsResolver implements DnsResolver {
         return sendQuery(name, servers.next(), false, promise, DnsType.A, DnsType.AAAA);
     }
 
-    private <T> Future<T> sendQuery(String domain, InetSocketAddress dnsServerAddress, boolean single, Promise<T> promise,
-                                    DnsType... types) {
+    private <T> Future<T> sendQuery(String domain, InetSocketAddress dnsServerAddress, boolean single,
+                                    Promise<T> promise, DnsType... types) {
         final ResolverDnsQuery<T> query = new ResolverDnsQuery<T>(nextId(), dnsServerAddress, single, promise);
         for (DnsType type: types) {
             query.addQuestion(new DnsQuestion(domain, type));
@@ -212,7 +205,6 @@ public final class DatagramDnsResolver implements DnsResolver {
                     if (query != null) {
                         query.setFailure(TIMEOUT);
                     }
-
                 }
             }, timeout, TimeUnit.MILLISECONDS);
             super.write(ctx, msg, promise);

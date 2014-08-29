@@ -18,7 +18,6 @@ package io.netty.util.resolver;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.concurrent.Future;
-import io.netty.util.concurrent.ImmediateEventExecutor;
 import io.netty.util.concurrent.Promise;
 import io.netty.util.internal.OneTimeTask;
 
@@ -26,13 +25,15 @@ import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.List;
 
-public final class JdkDnsResolver implements DnsResolver {
-
-    public static final DnsResolver DEFAULT = new JdkDnsResolver(ImmediateEventExecutor.INSTANCE);
+/**
+ * {@link DnsResolver} implementation which just uses {@link InetAddress} for the lookup, which means
+ * it may block.
+ */
+final class JdkDnsResolver implements DnsResolver {
 
     private final EventExecutorGroup group;
 
-    private JdkDnsResolver(EventExecutorGroup group) {
+    public JdkDnsResolver(EventExecutorGroup group) {
         if (group == null) {
             throw new NullPointerException("group");
         }
@@ -84,7 +85,6 @@ public final class JdkDnsResolver implements DnsResolver {
             });
         }
     }
-
 
     private static void lookupAll0(final EventExecutor executor, final String name,
                                 final Promise<List<InetAddress>> promise) {

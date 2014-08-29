@@ -15,12 +15,95 @@
  */
 package io.netty.resolver.dns;
 
-import java.net.InetSocketAddress;
+import io.netty.util.internal.logging.InternalLogger;
+import io.netty.util.internal.logging.InternalLoggerFactory;
 
-public interface NameServers {
+import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public abstract class NameServers {
+
+    private static final InternalLogger logger = InternalLoggerFactory.getInstance(NameServers.class);
+    private static final List<InetSocketAddress> SYSTEM_DEFAULTS = useSystemDefault();
+
+    private static List<InetSocketAddress> useSystemDefault() {
+        try {
+            Class<?> configClass = Class.forName("sun.net.dns.ResolverConfiguration");
+            Method open = configClass.getMethod("open");
+            Method nameservers = configClass.getMethod("nameservers");
+            Object instance = open.invoke(null);
+            @SuppressWarnings("unchecked")
+            List<String> list = (List<String>) nameservers.invoke(instance);
+            InetSocketAddress[] addresses = new InetSocketAddress[list.size()];
+            for (int i = 0; i < addresses.length; i++) {
+                addresses[i] = new InetSocketAddress(InetAddress.getByName(list.get(i)), 53);
+            }
+            return Arrays.asList(addresses);
+        } catch (Exception e) {
+            logger.error("Failed to obtain system's DNS server addresses.", e);
+            return Collections.emptyList();
+        }
+    }
+
+    public static List<InetSocketAddress> defaults() {
+        return SYSTEM_DEFAULTS;
+    }
 
     /**
      * Return next nameserver to use
      */
-    InetSocketAddress next();
+    public abstract InetSocketAddress next();
+
+    /**
+     * Creates an new {@link NameServers} intstance which will return the provided servers in a
+     * round-robin like fashion when call {@link #next()}.
+     */
+    public static NameServers roundRobin(final InetSocketAddress... servers) {
+        return roundRobin(Arrays.asList(servers));
+    }
+
+    /**
+     * Creates an new {@link NameServers} intstance which will return the provided servers in a
+     * round-robin like fashion when call {@link #next()}.
+     */
+    public static NameServers roundRobin(final List<InetSocketAddress> servers) {
+        if (servers == null) {
+            throw new NullPointerException("servers");
+        }
+        final int size = servers.size();
+        if (size == 0) {
+            throw new IllegalArgumentException();
+        }
+
+        return new NameServers() {
+
+            private final AtomicInteger idx = new AtomicInteger(0);
+
+            @Override
+            public InetSocketAddress next() {
+                return servers.get(Math.abs(idx.incrementAndGet() % size));
+            }
+        };
+    }
+    /**
+     * Creates an new {@link NameServers} intstance which will return the same server when call {@link #next()}.
+     */
+    public static NameServers one(final InetSocketAddress server) {
+        if (server == null) {
+            throw new NullPointerException("server");
+        }
+
+        return new NameServers() {
+
+            @Override
+            public InetSocketAddress next() {
+                return server;
+            }
+        };
+    }
 }
