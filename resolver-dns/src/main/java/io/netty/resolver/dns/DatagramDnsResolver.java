@@ -37,6 +37,7 @@ import io.netty.handler.codec.dns.DnsType;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
+import io.netty.util.concurrent.ScheduledFuture;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.resolver.DnsResolver;
@@ -167,6 +168,7 @@ public final class DatagramDnsResolver implements DnsResolver {
                 if (result != null) {
                     if (single) {
                         query.setSuccess(result);
+                        query.timeoutFuture.cancel(false);
                         return true;
                     }
                     if (decoded == null) {
@@ -177,6 +179,7 @@ public final class DatagramDnsResolver implements DnsResolver {
             }
             if (!decoded.isEmpty()) {
                 query.setSuccess(decoded);
+                query.timeoutFuture.cancel(false);
                 return true;
             }
             return false;
@@ -188,17 +191,8 @@ public final class DatagramDnsResolver implements DnsResolver {
             DnsQueryHeader header = query.header();
             final int id = header.id();
             queries.put(id, query);
-            promise.addListener(new ChannelFutureListener() {
-                @Override
-                public void operationComplete(ChannelFuture future) throws Exception {
-                    if (!future.isSuccess()) {
-                        queries.remove(id);
-                        query.setFailure(future.cause());
-                    }
-                }
-            });
             // Schedule task to detect timeout
-            ctx.executor().schedule(new Runnable() {
+            query.timeoutFuture = ctx.executor().schedule(new Runnable() {
                 @Override
                 public void run() {
                     ResolverDnsQuery<?> query = queries.remove(id);
@@ -207,6 +201,17 @@ public final class DatagramDnsResolver implements DnsResolver {
                     }
                 }
             }, timeout, TimeUnit.MILLISECONDS);
+
+            promise.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) throws Exception {
+                    if (!future.isSuccess()) {
+                        queries.remove(id);
+                        query.setFailure(future.cause());
+                        query.timeoutFuture.cancel(false);
+                    }
+                }
+            });
             super.write(ctx, msg, promise);
         }
     }
@@ -214,6 +219,7 @@ public final class DatagramDnsResolver implements DnsResolver {
     private static final class ResolverDnsQuery<T> extends DnsQuery {
         private final Promise<T> promise;
         private final boolean single;
+        private ScheduledFuture<?> timeoutFuture;
 
         private ResolverDnsQuery(int id, InetSocketAddress recipient, boolean single, Promise<T> promise) {
             super(id, recipient);
