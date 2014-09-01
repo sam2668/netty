@@ -223,6 +223,146 @@ public class DatagramDnsResolverTest {
         }
     }
 
+    @Test
+    public void testLookupMx() throws Exception {
+        final String mxRecord = "mail.vertx.io";
+        final int prio = 10;
+        AdvancedDnsResolver dns = prepare(new TestDnsServer(new RecordStore() {
+            @Override
+            public Set<ResourceRecord> getRecords(QuestionRecord questionRecord) {
+                Set<ResourceRecord> set = new HashSet<ResourceRecord>();
+
+                ResourceRecordModifier rm = createModifier();
+                rm.setDnsType(RecordType.MX);
+                rm.put(DnsAttribute.MX_PREFERENCE, String.valueOf(prio));
+                rm.put(DnsAttribute.DOMAIN_NAME, mxRecord);
+                set.add(rm.getEntry());
+                return set;
+            }
+        }));
+
+        List<MailExchangerRecord> records = dns.lookupMx("netty.io").get();
+        Assert.assertEquals(1, records.size());
+        MailExchangerRecord record = records.get(0);
+        Assert.assertEquals(prio, record.priority());
+        Assert.assertEquals(mxRecord, record.name());
+    }
+
+    /*
+    @Test
+    public void testLookupTxt() throws Exception {
+        final String txt = "vertx is awesome";
+        AdvancedDnsResolver dns = prepare(new TestDnsServer(new RecordStore() {
+            @Override
+            public Set<ResourceRecord> getRecords(QuestionRecord questionRecord) {
+                Set<ResourceRecord> set = new HashSet<ResourceRecord>();
+
+                ResourceRecordModifier rm = createModifier();
+                rm.setDnsType(RecordType.TXT);
+                rm.put(DnsAttribute.CHARACTER_STRING, txt);
+                set.add(rm.getEntry());
+                return set;
+            }
+        }));
+
+        List<List<String>> txts = dns.lookupTxt("netty.io").get();
+        Assert.assertEquals(1, txts.size());
+        List<String> textRecord = txts.get(0);
+        Assert.assertEquals(1, textRecord.size());
+        Assert.assertEquals(txt, textRecord.get(0));
+    }
+*/
+    @Test
+    public void testLookupNs() throws Exception {
+        final String ns = "ns.netty.io";
+        AdvancedDnsResolver dns = prepare(new TestDnsServer(new RecordStore() {
+            @Override
+            public Set<ResourceRecord> getRecords(QuestionRecord questionRecord) {
+                Set<ResourceRecord> set = new HashSet<ResourceRecord>();
+
+                ResourceRecordModifier rm = createModifier();
+                rm.setDnsType(RecordType.NS);
+                rm.put(DnsAttribute.DOMAIN_NAME, ns);
+                set.add(rm.getEntry());
+                return set;
+            }
+        }));
+        List<String> records = dns.lookupNs("netty.io").get();
+        Assert.assertEquals(1, records.size());
+        Assert.assertEquals(ns, records.get(0));
+    }
+
+    @Test
+    public void testLookupCname() throws Exception {
+        final String cname = "cname.netty.io";
+        AdvancedDnsResolver dns = prepare(new TestDnsServer(new RecordStore() {
+            @Override
+            public Set<ResourceRecord> getRecords(QuestionRecord questionRecord) {
+                Set<ResourceRecord> set = new HashSet<ResourceRecord>();
+
+                ResourceRecordModifier rm = createModifier();
+                rm.setDnsType(RecordType.CNAME);
+                rm.put(DnsAttribute.DOMAIN_NAME, cname);
+                set.add(rm.getEntry());
+                return set;
+            }
+        }));
+
+        List<String> records = dns.lookupCname("netty.io").get();
+        Assert.assertEquals(1, records.size());
+        Assert.assertEquals(cname, records.get(0));
+    }
+
+    @Test
+    public void testLookupSrv() throws Exception {
+        final int priority = 10;
+        final int weight = 1;
+        final int port = 80;
+        final String target = "netty.io";
+
+        AdvancedDnsResolver dns = prepare(new TestDnsServer(new RecordStore() {
+            @Override
+            public Set<ResourceRecord> getRecords(QuestionRecord questionRecord) {
+                Set<ResourceRecord> set = new HashSet<ResourceRecord>();
+
+                ResourceRecordModifier rm = createModifier();
+                rm.setDnsType(RecordType.SRV);
+                rm.put(DnsAttribute.SERVICE_PRIORITY, String.valueOf(priority));
+                rm.put(DnsAttribute.SERVICE_WEIGHT, String.valueOf(weight));
+                rm.put(DnsAttribute.SERVICE_PORT, String.valueOf(port));
+                rm.put(DnsAttribute.DOMAIN_NAME, target);
+                set.add(rm.getEntry());
+                return set;
+            }
+        }));
+
+        List<ServiceRecord> records = dns.lookupSrv("netty.io").get();
+        Assert.assertEquals(1, records.size());
+        ServiceRecord record = records.get(0);
+
+        Assert.assertEquals(priority, record.priority());
+        Assert.assertEquals(weight, record.weight());
+        Assert.assertEquals(port, record.port());
+        Assert.assertEquals(target, record.target());
+    }
+    @Test
+    public void testLookupPtr() throws Exception {
+        final String ptr = "ptr.netty.io";
+        AdvancedDnsResolver dns = prepare(new TestDnsServer(new RecordStore() {
+            @Override
+            public Set<ResourceRecord> getRecords(QuestionRecord questionRecord) {
+                Set<ResourceRecord> set = new HashSet<ResourceRecord>();
+
+                ResourceRecordModifier rm = createModifier();
+                rm.setDnsType(RecordType.PTR);
+                rm.put(DnsAttribute.DOMAIN_NAME, ptr);
+                set.add(rm.getEntry());
+                return set;
+            }
+        }));
+        Assert.assertEquals(ptr, dns.lookupPtr("10.0.0.1").get());
+    }
+
     private AdvancedDnsResolver prepare(TestDnsServer server) throws Exception {
         dnsServer = server;
         dnsServer.start();

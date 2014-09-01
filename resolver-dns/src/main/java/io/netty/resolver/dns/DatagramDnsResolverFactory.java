@@ -26,10 +26,11 @@ import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.FutureListener;
 import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.util.concurrent.Promise;
+import io.netty.util.internal.PlatformDependent;
 import io.netty.util.resolver.DnsResolver;
 import io.netty.util.resolver.DnsResolverFactory;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 public final class DatagramDnsResolverFactory implements DnsResolverFactory<EventLoop> {
@@ -37,8 +38,8 @@ public final class DatagramDnsResolverFactory implements DnsResolverFactory<Even
     private final Class<? extends DatagramChannel> clazz;
     private final NameServers servers;
     private final long timeoutMillis;
-    private final ConcurrentHashMap<EventExecutor, Future<DnsResolver>> cache =
-            new ConcurrentHashMap<EventExecutor, Future<DnsResolver>>();
+    private final ConcurrentMap<EventExecutor, Future<DnsResolver>> cache =
+            PlatformDependent.newConcurrentHashMap();
 
     private final ChannelFutureListener cacheRemover = new ChannelFutureListener() {
         @Override

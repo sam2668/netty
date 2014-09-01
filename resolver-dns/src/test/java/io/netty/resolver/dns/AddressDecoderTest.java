@@ -33,7 +33,7 @@ public class AddressDecoderTest {
 
     @Test
     public void testDecodeARecord() {
-        AddressDecoder decoder = AddressDecoder.A_RECORD_DECODER;
+        AddressDecoder decoder = AddressDecoder.A_INSTANCE;
         InetAddress address = decoder.decode(
                 new DnsResource("netty.io", DnsType.A, DnsClass.IN, 1024, Unpooled.wrappedBuffer(IP4_BYTES)));
         Assert.assertTrue(address instanceof Inet4Address);
@@ -42,14 +42,14 @@ public class AddressDecoderTest {
 
     @Test(expected = DecoderException.class)
     public void testDecodeARecordOctetsMissmatch() {
-        AddressDecoder decoder = AddressDecoder.A_RECORD_DECODER;
+        AddressDecoder decoder = AddressDecoder.A_INSTANCE;
         decoder.decode(
                 new DnsResource("netty.io", DnsType.A, DnsClass.IN, 1024, Unpooled.wrappedBuffer(IP6_BYTES)));
     }
 
     @Test
     public void testDecodeAAAARecord() {
-        AddressDecoder decoder = AddressDecoder.AAAA_RECORD_DECODER;
+        AddressDecoder decoder = AddressDecoder.AAAA_INSTANCE;
         InetAddress address = decoder.decode(
                 new DnsResource("netty.io", DnsType.A, DnsClass.IN, 1024, Unpooled.wrappedBuffer(IP6_BYTES)));
         Assert.assertTrue(address instanceof Inet6Address);
@@ -58,7 +58,7 @@ public class AddressDecoderTest {
 
     @Test(expected = DecoderException.class)
     public void testDecodeAAAARecordOctetsMissmatch() {
-        AddressDecoder decoder = AddressDecoder.AAAA_RECORD_DECODER;
+        AddressDecoder decoder = AddressDecoder.AAAA_INSTANCE;
         decoder.decode(
                 new DnsResource("netty.io", DnsType.A, DnsClass.IN, 1024, Unpooled.wrappedBuffer(IP4_BYTES)));
     }

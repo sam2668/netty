@@ -27,10 +27,10 @@ import java.net.UnknownHostException;
  * Decodes A and AAAA resource records into IPv4 and IPv6 addresses,
  * respectively.
  */
-final class AddressDecoder implements DnsResourceDecoder<InetAddress> {
+public final class AddressDecoder implements DnsResourceDecoder<InetAddress> {
 
-    static final AddressDecoder A_RECORD_DECODER = new AddressDecoder(4);
-    static final AddressDecoder AAAA_RECORD_DECODER = new AddressDecoder(16);
+    public static final AddressDecoder A_INSTANCE = new AddressDecoder(4);
+    public static final AddressDecoder AAAA_INSTANCE = new AddressDecoder(16);
 
     private final int octets;
 

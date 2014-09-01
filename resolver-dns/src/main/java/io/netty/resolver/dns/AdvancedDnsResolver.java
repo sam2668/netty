@@ -36,5 +36,20 @@ public interface AdvancedDnsResolver extends DnsResolver {
     Future<List<Inet6Address>> lookup6All(String name);
     Future<List<Inet6Address>> lookup6All(String name, Promise<List<Inet6Address>> promise);
 
-    // TODO: Add stuff for MX, TXT, SRV, NS etc.
+    Future<List<MailExchangerRecord>> lookupMx(String name);
+    Future<List<MailExchangerRecord>> lookupMx(String name, Promise<List<MailExchangerRecord>> promise);
+
+    Future<List<ServiceRecord>> lookupSrv(String name);
+    Future<List<ServiceRecord>> lookupSrv(String name, Promise<List<ServiceRecord>> promise);
+
+    Future<List<String>> lookupCname(String name);
+    Future<List<String>> lookupCname(String name, Promise<List<String>> promise);
+
+    Future<List<String>> lookupNs(String name);
+    Future<List<String>> lookupNs(String name, Promise<List<String>> promise);
+
+    Future<String> lookupPtr(String name);
+    Future<String> lookupPtr(String name, Promise<String> promise);
+
+    // TODO: Add stuff for TXT
 }

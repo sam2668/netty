@@ -38,6 +38,7 @@ import io.netty.util.concurrent.Promise;
 import io.netty.util.concurrent.ScheduledFuture;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.PlatformDependent;
+import io.netty.util.internal.StringUtil;
 import io.netty.util.resolver.DnsResolverException;
 
 import java.net.Inet4Address;
@@ -46,6 +47,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -55,15 +57,27 @@ final class DatagramDnsResolver implements AdvancedDnsResolver {
     private static final DnsResponseDecoder RESPONSE_DECODER = new DnsResponseDecoder();
     private static final DnsQueryEncoder QUERY_ENCODER = new DnsQueryEncoder();
     private static final DnsResolverException TIMEOUT = new DnsResolverException("DNS query timeout");
+    private static final String IN_ADDR_ARPA = "in-addr.arpa";
+
+    private static final Map<DnsType, DnsResourceDecoder<?>> DECODER_MAP =
+            new HashMap<DnsType, DnsResourceDecoder<?>>();
 
     static {
         TIMEOUT.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
+        DECODER_MAP.put(DnsType.A, AddressDecoder.A_INSTANCE);
+        DECODER_MAP.put(DnsType.AAAA, AddressDecoder.AAAA_INSTANCE);
+        DECODER_MAP.put(DnsType.MX, MailExchangerDecoder.INSTANCE);
+        DECODER_MAP.put(DnsType.TXT, TextDecoder.INSTANCE);
+        DECODER_MAP.put(DnsType.SRV, ServiceDecoder.INSTANCE);
+        DECODER_MAP.put(DnsType.NS, DomainDecoder.INSTANCE);
+        DECODER_MAP.put(DnsType.CNAME, DomainDecoder.INSTANCE);
+        DECODER_MAP.put(DnsType.PTR, DomainDecoder.INSTANCE);
+        DECODER_MAP.put(DnsType.SOA, StartOfAuthorityDecoder.INSTANCE);
     }
 
     private final NameServers servers;
     private final AtomicInteger id = new AtomicInteger(0);
     private final DatagramChannel channel;
-    private final DnsResourceDecoder<?> decoder = DefaultDnsResourceDecoder.INSTANCE;
     private final long timeout;
 
     DatagramDnsResolver(DatagramChannel channel, long timeout, NameServers servers) {
@@ -143,6 +157,61 @@ final class DatagramDnsResolver implements AdvancedDnsResolver {
         return sendQuery(name, servers.next(), false, promise, DnsType.AAAA);
     }
 
+    @Override
+    public Future<List<MailExchangerRecord>> lookupMx(String name) {
+        return lookupMx(name, channel.eventLoop().<List<MailExchangerRecord>>newPromise());
+    }
+
+    @Override
+    public Future<List<MailExchangerRecord>> lookupMx(String name, Promise<List<MailExchangerRecord>> promise) {
+        return sendQuery(name, servers.next(), false, promise, DnsType.MX);
+    }
+
+    @Override
+    public Future<List<ServiceRecord>> lookupSrv(String name) {
+        return lookupSrv(name, channel.eventLoop().<List<ServiceRecord>>newPromise());
+    }
+
+    @Override
+    public Future<List<ServiceRecord>> lookupSrv(String name, Promise<List<ServiceRecord>> promise) {
+        return sendQuery(name, servers.next(), false, promise, DnsType.SRV);
+    }
+
+    @Override
+    public Future<List<String>> lookupCname(String name) {
+        return lookupCname(name, channel.eventLoop().<List<String>>newPromise());
+    }
+
+    @Override
+    public Future<List<String>> lookupCname(String name, Promise<List<String>> promise) {
+        return sendQuery(name, servers.next(), false, promise, DnsType.CNAME);
+    }
+
+    @Override
+    public Future<List<String>> lookupNs(String name) {
+        return lookupNs(name, channel.eventLoop().<List<String>>newPromise());
+    }
+
+    @Override
+    public Future<List<String>> lookupNs(String name, Promise<List<String>> promise) {
+        return sendQuery(name, servers.next(), false, promise, DnsType.NS);
+    }
+
+    @Override
+    public Future<String> lookupPtr(String ipAddress) {
+        return lookupPtr(ipAddress, channel.eventLoop().<String>newPromise());
+    }
+
+    @Override
+    public Future<String> lookupPtr(String ipAddress, Promise<String> promise) {
+        String[] octets = StringUtil.split(ipAddress, '.');
+        StringBuilder addr = new StringBuilder(ipAddress.length() + IN_ADDR_ARPA.length() + 4);
+        for (int i = octets.length - 1; i > -1; i--) {
+            addr.append(octets[i]).append('.');
+        }
+        return sendQuery(addr.toString(), servers.next(), true, promise, DnsType.PTR);
+    }
+
     private <T> Future<T> sendQuery(String domain, InetSocketAddress dnsServerAddress, boolean single,
                                     Promise<T> promise, DnsType... types) {
         final ResolverDnsQuery<T> query = new ResolverDnsQuery<T>(nextId(), dnsServerAddress, single, promise);
@@ -209,6 +278,13 @@ final class DatagramDnsResolver implements AdvancedDnsResolver {
             List<Object> decoded = null;
             for (int i = 0; i < resources.size(); i++) {
                 DnsResource resource = resources.get(i);
+                DnsResourceDecoder<?> decoder = DECODER_MAP.get(resource.type());
+                if (decoder == null) {
+                    query.promise.tryFailure(new DnsResolverException("Unable to decode DnsType " +
+                            resource.type()));
+                    query.timeoutFuture.cancel(false);
+                    return true;
+                }
                 Object result = decoder.decode(resource);
                 if (result != null) {
                     if (single) {
