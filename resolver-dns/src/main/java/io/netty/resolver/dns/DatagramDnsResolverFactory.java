@@ -15,8 +15,10 @@
  */
 package io.netty.resolver.dns;
 
+import io.netty.channel.ChannelConfig;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoop;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.util.concurrent.EventExecutor;
@@ -28,11 +30,13 @@ import io.netty.util.resolver.DnsResolver;
 import io.netty.util.resolver.DnsResolverFactory;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public final class DatagramDnsResolverFactory implements DnsResolverFactory<EventLoop> {
 
     private final Class<? extends DatagramChannel> clazz;
     private final NameServers servers;
+    private final long timeoutMillis;
     private final ConcurrentHashMap<EventExecutor, Future<DnsResolver>> cache =
             new ConcurrentHashMap<EventExecutor, Future<DnsResolver>>();
 
@@ -43,9 +47,15 @@ public final class DatagramDnsResolverFactory implements DnsResolverFactory<Even
         }
     };
 
-    DatagramDnsResolverFactory(Class<? extends DatagramChannel> clazz, NameServers servers) {
+    public DatagramDnsResolverFactory(Class<? extends DatagramChannel> clazz, NameServers servers) {
+        this(clazz, servers, 10, TimeUnit.SECONDS);
+    }
+
+    public DatagramDnsResolverFactory(Class<? extends DatagramChannel> clazz, NameServers servers,
+                                      long timeout, TimeUnit unit) {
         this.clazz = clazz;
         this.servers = servers;
+        timeoutMillis = unit.toMillis(timeout);
     }
 
     @SuppressWarnings({ "rawtypes", "unchecked" })
@@ -69,12 +79,15 @@ public final class DatagramDnsResolverFactory implements DnsResolverFactory<Even
                     }
                 });
                 final DatagramChannel channel = newChannel();
+                ChannelConfig config = channel.config();
+                config.setOption(ChannelOption.DATAGRAM_CHANNEL_ACTIVE_ON_REGISTRATION, true);
+
                 executor.register(channel).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
                         if (future.isSuccess()) {
                             channel.closeFuture().addListener(cacheRemover);
-                            promise.setSuccess(new DatagramDnsResolver(channel, 10000, servers));
+                            promise.setSuccess(new DatagramDnsResolver(channel, timeoutMillis, servers));
                         } else {
                             cache.remove(executor);
                             promise.setFailure(future.cause());

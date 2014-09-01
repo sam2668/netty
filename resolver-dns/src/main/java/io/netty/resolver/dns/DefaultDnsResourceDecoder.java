@@ -20,9 +20,9 @@ import io.netty.handler.codec.dns.DnsType;
 
 import java.net.InetAddress;
 
-public final class DefaultDnsResourceDecoder implements DnsResourceDecoder<Object> {
-    private static final DnsResourceDecoder<InetAddress> A_RESOURCE_DECODER = new AddressDecoder(4);
-    private static final DnsResourceDecoder<InetAddress> AAAA_RESOURCE_DECODER = new AddressDecoder(16);
+final class DefaultDnsResourceDecoder implements DnsResourceDecoder<Object> {
+    private static final DnsResourceDecoder<InetAddress> A_RESOURCE_DECODER = AddressDecoder.A_RECORD_DECODER;
+    private static final DnsResourceDecoder<InetAddress> AAAA_RESOURCE_DECODER = AddressDecoder.AAAA_RECORD_DECODER;
 
     public static final DnsResourceDecoder<Object> INSTANCE = new DefaultDnsResourceDecoder();
 

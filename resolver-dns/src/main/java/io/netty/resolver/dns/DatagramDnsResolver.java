@@ -15,13 +15,11 @@
  */
 package io.netty.resolver.dns;
 
-import io.netty.channel.ChannelConfig;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.handler.codec.dns.DnsQuery;
@@ -40,18 +38,20 @@ import io.netty.util.concurrent.Promise;
 import io.netty.util.concurrent.ScheduledFuture;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.PlatformDependent;
-import io.netty.util.resolver.DnsResolver;
 import io.netty.util.resolver.DnsResolverException;
 
+import java.net.Inet4Address;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public final class DatagramDnsResolver implements DnsResolver {
+final class DatagramDnsResolver implements AdvancedDnsResolver {
     private static final DnsResponseDecoder RESPONSE_DECODER = new DnsResponseDecoder();
     private static final DnsQueryEncoder QUERY_ENCODER = new DnsQueryEncoder();
     private static final DnsResolverException TIMEOUT = new DnsResolverException("DNS query timeout");
@@ -67,17 +67,17 @@ public final class DatagramDnsResolver implements DnsResolver {
     private final long timeout;
 
     DatagramDnsResolver(DatagramChannel channel, long timeout, NameServers servers) {
-        if (timeout < 0) {
+        if (timeout <= 0) {
             throw new IllegalArgumentException();
         }
         if (!channel.isRegistered()) {
             throw new IllegalStateException("Channel must be registered before");
         }
+        if (servers == null) {
+            throw new NullPointerException("servers");
+        }
         this.servers = servers;
         this.channel = channel;
-        ChannelConfig config = channel.config();
-        config.setOption(ChannelOption.DATAGRAM_CHANNEL_ACTIVE_ON_REGISTRATION, true);
-        config.setOption(ChannelOption.SO_BROADCAST, true);
         channel.pipeline().addLast("decoder", RESPONSE_DECODER).addLast("encoder", QUERY_ENCODER)
                 .addLast("handler", new DnsResponseHandler());
         this.timeout = timeout;
@@ -101,6 +101,46 @@ public final class DatagramDnsResolver implements DnsResolver {
     @Override
     public Future<List<InetAddress>> lookupAll(String name, Promise<List<InetAddress>> promise) {
         return sendQuery(name, servers.next(), false, promise, DnsType.A, DnsType.AAAA);
+    }
+
+    @Override
+    public Future<Inet4Address> lookup4(String name) {
+        return lookup4(name, channel.eventLoop().<Inet4Address>newPromise());
+    }
+
+    @Override
+    public Future<Inet4Address> lookup4(String name, Promise<Inet4Address> promise) {
+        return sendQuery(name, servers.next(), true, promise, DnsType.A);
+    }
+
+    @Override
+    public Future<List<Inet4Address>> lookup4All(String name) {
+        return lookup4All(name, channel.eventLoop().<List<Inet4Address>>newPromise());
+    }
+
+    @Override
+    public Future<List<Inet4Address>> lookup4All(String name, Promise<List<Inet4Address>> promise) {
+        return sendQuery(name, servers.next(), false, promise, DnsType.A);
+    }
+
+    @Override
+    public Future<Inet6Address> lookup6(String name) {
+        return lookup6(name, channel.eventLoop().<Inet6Address>newPromise());
+    }
+
+    @Override
+    public Future<Inet6Address> lookup6(String name, Promise<Inet6Address> promise) {
+        return sendQuery(name, servers.next(), true, promise, DnsType.AAAA);
+    }
+
+    @Override
+    public Future<List<Inet6Address>> lookup6All(String name) {
+        return lookup6All(name, channel.eventLoop().<List<Inet6Address>>newPromise());
+    }
+
+    @Override
+    public Future<List<Inet6Address>> lookup6All(String name, Promise<List<Inet6Address>> promise) {
+        return sendQuery(name, servers.next(), false, promise, DnsType.AAAA);
     }
 
     private <T> Future<T> sendQuery(String domain, InetSocketAddress dnsServerAddress, boolean single,
@@ -142,14 +182,19 @@ public final class DatagramDnsResolver implements DnsResolver {
                 DnsResponseHeader header = response.header();
                 ResolverDnsQuery<?> query = queries.remove(header.id());
                 if (query != null) {
-                    DnsResponseCode code = header.responseCode();
-                    if (code == DnsResponseCode.NOERROR) {
+                    query.timeoutFuture.cancel(false);
+
+                    DnsResponseCode responseCode = header.responseCode();
+                    int code = responseCode.code();
+                    if (code == DnsResponseCode.NOERROR.code()) {
                         if (processResource(query, response.answers())) {
                             return;
                         }
-                        query.setFailure(new DnsResolverException("Unable to decode resources"));
+                        query.promise.tryFailure(new DnsResolverException("Unable to decode resources"));
+                    } else if (code == DnsResponseCode.NXDOMAIN.code()) {
+                        query.promise.tryFailure(new DnsResolverException(new UnknownHostException()));
                     } else {
-                        query.setFailure(new DnsResolverException(code.toString()));
+                        query.promise.tryFailure(new DnsResolverException(responseCode.toString()));
                     }
                 }
             } finally {
@@ -167,7 +212,7 @@ public final class DatagramDnsResolver implements DnsResolver {
                 Object result = decoder.decode(resource);
                 if (result != null) {
                     if (single) {
-                        query.setSuccess(result);
+                        query.promise.trySuccess(result);
                         query.timeoutFuture.cancel(false);
                         return true;
                     }
@@ -178,7 +223,7 @@ public final class DatagramDnsResolver implements DnsResolver {
                 }
             }
             if (!decoded.isEmpty()) {
-                query.setSuccess(decoded);
+                query.promise.trySuccess(decoded);
                 query.timeoutFuture.cancel(false);
                 return true;
             }
@@ -197,7 +242,7 @@ public final class DatagramDnsResolver implements DnsResolver {
                 public void run() {
                     ResolverDnsQuery<?> query = queries.remove(id);
                     if (query != null) {
-                        query.setFailure(TIMEOUT);
+                        query.promise.tryFailure(TIMEOUT);
                     }
                 }
             }, timeout, TimeUnit.MILLISECONDS);
@@ -207,7 +252,7 @@ public final class DatagramDnsResolver implements DnsResolver {
                 public void operationComplete(ChannelFuture future) throws Exception {
                     if (!future.isSuccess()) {
                         queries.remove(id);
-                        query.setFailure(future.cause());
+                        query.promise.tryFailure(future.cause());
                         query.timeoutFuture.cancel(false);
                     }
                 }
@@ -225,14 +270,6 @@ public final class DatagramDnsResolver implements DnsResolver {
             super(id, recipient);
             this.promise = promise;
             this.single = single;
-        }
-
-        void setSuccess(T result) {
-            promise.trySuccess(result);
-        }
-
-        void setFailure(Throwable cause) {
-            promise.tryFailure(cause);
         }
     }
 }
